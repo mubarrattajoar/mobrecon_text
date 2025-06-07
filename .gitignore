@@ -8,3 +8,8 @@ __pycache__/
 .idea/
 **/*.pkl
 **/out/*
+mano_v1_2.zip
+*.ckpt
+*.pth
+logs/
+checkpoints/
