@@ -46,6 +46,13 @@ class FreiHAND(data.Dataset):
         self.db_data_anno = tuple(load_db_annotation(self.cfg.DATA.FREIHAND.ROOT, set_name=self.phase))
         self.color_aug = Augmentation() if cfg.DATA.COLOR_AUG and 'train' in self.phase else None
         self.one_version_len = len(self.db_data_anno)
+        if 'train' in self.phase:
+            self.text_embeddings = np.load(os.path.join(self.cfg.DATA.FREIHAND.ROOT,"training_embed_angle.npy"), allow_pickle=True)
+        elif 'val' in self.phase or "eval" in self.phase:
+            self.text_embeddings = np.load(os.path.join(self.cfg.DATA.FREIHAND.ROOT,"val_embed_angle.npy"), allow_pickle=True)
+        elif "test" in self.phase:
+            self.text_embeddings = np.load(os.path.join(self.cfg.DATA.FREIHAND.ROOT,"evaluation_embed_angle.npy"), allow_pickle=True)
+        self.text_embeddings = self.text_embeddings.tolist()
         # if 'train' in self.phase:
         #     self.db_data_anno *= 4
         if writer is not None:
@@ -72,6 +79,11 @@ class FreiHAND(data.Dataset):
         img = read_img_abs(idx, self.cfg.DATA.FREIHAND.ROOT, 'training')
         vert = read_mesh(idx, self.cfg.DATA.FREIHAND.ROOT,set_name='training').x.numpy()
         mask = read_mask_woclip(idx , self.cfg.DATA.FREIHAND.ROOT, 'training')
+        textembed = self.text_embeddings['%08d.jpg' % idx]
+        fingers = ["thumb", "index", "middle", "ring", "little"]
+        textembed = torch.stack(
+            [torch.as_tensor(textembed["angle"][f]) for f in fingers],
+            dim=0)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = list(contours)
         contours.sort(key=cnt_area, reverse=True)
@@ -162,7 +174,7 @@ class FreiHAND(data.Dataset):
 
         # out
         res = {'img': roi, 'joint_img': joint_img, 'joint_cam': joint_cam, 'verts': vert, 'mask': mask,
-               'root': root, 'calib': calib, 'aug_param': aug_param, 'bb2img_trans': bb2img_trans,}
+               'root': root, 'calib': calib, 'aug_param': aug_param, 'bb2img_trans': bb2img_trans, "textembed": textembed}
 
         return res
 
@@ -173,6 +185,12 @@ class FreiHAND(data.Dataset):
         img = read_img_abs(idx, self.cfg.DATA.FREIHAND.ROOT, 'training')
         vert = read_mesh(idx, self.cfg.DATA.FREIHAND.ROOT,set_name='training').x.numpy()
         mask = read_mask_woclip(idx, self.cfg.DATA.FREIHAND.ROOT, 'training')
+        textembed = self.text_embeddings['%08d.jpg' % idx]
+        fingers = ["thumb", "index", "middle", "ring", "little"]
+        textembed = torch.stack(
+            [torch.as_tensor(textembed["angle"][f]) for f in fingers],
+            dim=0)
+
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = list(contours)
         contours.sort(key=cnt_area, reverse=True)
@@ -237,7 +255,7 @@ class FreiHAND(data.Dataset):
         vert = torch.from_numpy(vert).float()
 
         # out
-        res = {'img': roi, 'joint_img': joint_img, 'joint_cam': joint_cam, 'verts': vert, 'mask': mask, 'root': root, 'calib': calib}
+        res = {'img': roi, 'joint_img': joint_img, 'joint_cam': joint_cam, 'verts': vert, 'mask': mask, 'root': root, 'calib': calib, "textembed": textembed}
 
         return res
 
@@ -248,6 +266,11 @@ class FreiHAND(data.Dataset):
         img = read_img_abs(idx, self.cfg.DATA.FREIHAND.ROOT, 'val')
         vert = read_mesh(idx, self.cfg.DATA.FREIHAND.ROOT,set_name='val').x.numpy()
         mask = read_mask_woclip(idx, self.cfg.DATA.FREIHAND.ROOT, 'val')
+        textembed = self.text_embeddings['%08d.jpg' % idx]
+        fingers = ["thumb", "index", "middle", "ring", "little"]
+        textembed = torch.stack(
+            [torch.as_tensor(textembed["angle"][f]) for f in fingers],
+            dim=0)
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours = list(contours)
         contours.sort(key=cnt_area, reverse=True)
@@ -312,7 +335,7 @@ class FreiHAND(data.Dataset):
         vert = torch.from_numpy(vert).float()
 
         # out
-        res = {'img': roi, 'joint_img': joint_img, 'joint_cam': joint_cam, 'verts': vert, 'mask': mask, 'root': root, 'calib': calib}
+        res = {'img': roi, 'joint_img': joint_img, 'joint_cam': joint_cam, 'verts': vert, 'mask': mask, 'root': root, 'calib': calib, "textembed": textembed}
 
         return res
 
@@ -321,6 +344,11 @@ class FreiHAND(data.Dataset):
         """
         # read
         img = read_img(idx, self.cfg.DATA.FREIHAND.ROOT, 'evaluation', 'gs')
+        textembed = self.text_embeddings['%08d.jpg' % idx]
+        fingers = ["thumb", "index", "middle", "ring", "little"]
+        textembed = torch.stack(
+            [torch.as_tensor(textembed["angle"][f]) for f in fingers],
+            dim=0)
         K, scale = self.db_data_anno[idx]
         K = np.array(K)
         princpt = K[0:2, 2].astype(np.float32)
@@ -351,7 +379,7 @@ class FreiHAND(data.Dataset):
         calib[:2, 2:3] = princpt[:, None]
         calib = torch.from_numpy(calib).float()
 
-        return {'img': roi, 'calib': calib}
+        return {'img': roi, 'calib': calib, "textembed": textembed}
 
     def __len__(self):
 

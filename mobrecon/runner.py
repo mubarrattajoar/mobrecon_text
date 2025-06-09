@@ -155,7 +155,8 @@ class Runner(object):
             adjust_learning_rate(self.optimizer, self.epoch, step, len(self.train_loader), self.cfg.TRAIN.LR, self.cfg.TRAIN.LR_DECAY, self.cfg.TRAIN.DECAY_STEP, self.cfg.TRAIN.WARMUP_EPOCHS)
             data = self.phrase_data(data)
             self.optimizer.zero_grad()
-            out = self.model(data['img'])
+            # added by mub
+            out = self.model(data['img'], finger_embeddings = data["textembed"])
             tf = time.time()
             forward_time += tf - ts
             losses = self.loss(verts_pred=out.get('verts'),
@@ -222,7 +223,8 @@ class Runner(object):
                     print(step, len(self.val_loader))
                 # get data then infernce
                 data = self.phrase_data(data)
-                out = self.model(data['img'])
+                #added by mub
+                out = self.model(data['img'], finger_embeddings = data["textembed"])
 
                 # get vertex pred
                 verts_pred = out['verts'][0].cpu().numpy() * 0.2
@@ -289,7 +291,8 @@ class Runner(object):
                 if self.board is None and step % 100 == 0:
                     print(step, len(self.test_loader))
                 data = self.phrase_data(data)
-                out = self.model(data['img'])
+                #added by mub
+                out = self.model(data['img'], finger_embeddings = data["textembed"])
                 # get verts pred
                 verts_pred = out['verts'][0].cpu().numpy() * 0.2
 
