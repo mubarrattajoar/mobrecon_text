@@ -51,32 +51,21 @@ class TextEmbeddingEncoder(nn.Module):
 
         return x
 
-class FiLM(nn.Module):
-    def __init__(self, txt_dim, c):
-        super().__init__()
-        self.gamma = nn.Linear(txt_dim, c)
-        self.beta = nn.Linear(txt_dim, c)
-
-    def forward(self, feat, txt):  # feat B×C×h×w
-        g = self.gamma(txt)[:, :, None, None]
-        b = self.beta(txt)[:, :, None, None]
-        return g * feat + b
 
 @MODEL_REGISTRY.register()
-class MobRecon_DS_film(nn.Module):
+class MobRecon_DS_concat_conv(nn.Module):
     def __init__(self, cfg):
         """Init a MobRecon-DenseStack model
 
         Args:
             cfg : config file
         """
-        super(MobRecon_DS_film, self).__init__()
+        super(MobRecon_DS_concat_conv, self).__init__()
         # added by mub
         self.text_embedding = TextEmbeddingEncoder()
         C = 256
-        txt_dim = 256
-        self.txt_proj = nn.Linear(txt_dim, C)
-        self.fusion = FiLM(txt_dim, C)
+        self.txt_dim = 256
+        self.fusion_conv = nn.Conv2d(C + self.txt_dim, C, kernel_size=1)
 
         self.cfg = cfg
         self.backbone = DenseStack_Backnone(latent_size=cfg.MODEL.LATENT_SIZE,
@@ -107,7 +96,13 @@ class MobRecon_DS_film(nn.Module):
             pred2d_pt_list = []
             for i in range(2):
                 latent, pred2d_pt = self.backbone(x[:, 3*i:3*i+3])
-                latent = self.fusion(latent, self.txt_proj(text_token))
+
+                B, C, H, W = latent.shape
+                text_map = text_token.unsqueeze(-1).unsqueeze(-1)  # (B, txt_dim, 1, 1)
+                text_map = text_map.expand(-1, -1, H, W)  # (B, txt_dim, H, W)
+                fused = torch.cat([latent, text_map], dim=1)  # (B, C+txt_dim, H, W)
+                latent = self.fusion_conv(fused)  # (B, C, H, W)
+
                 pred3d = self.decoder3d(pred2d_pt, latent)
                 pred3d_list.append(pred3d)
                 pred2d_pt_list.append(pred2d_pt)
@@ -115,6 +110,12 @@ class MobRecon_DS_film(nn.Module):
             pred3d = torch.cat(pred3d_list, -1)
         else:
             latent, pred2d_pt = self.backbone(x)
+
+            B, C, H, W = latent.shape
+            text_map = text_token.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, H, W)
+            fused = torch.cat([latent, text_map], dim=1)
+            latent = self.fusion_conv(fused)
+
             pred3d = self.decoder3d(pred2d_pt, latent)
 
         return {'verts': pred3d,

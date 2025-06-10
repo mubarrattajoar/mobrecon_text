@@ -51,32 +51,25 @@ class TextEmbeddingEncoder(nn.Module):
 
         return x
 
-class FiLM(nn.Module):
-    def __init__(self, txt_dim, c):
-        super().__init__()
-        self.gamma = nn.Linear(txt_dim, c)
-        self.beta = nn.Linear(txt_dim, c)
-
-    def forward(self, feat, txt):  # feat B×C×h×w
-        g = self.gamma(txt)[:, :, None, None]
-        b = self.beta(txt)[:, :, None, None]
-        return g * feat + b
 
 @MODEL_REGISTRY.register()
-class MobRecon_DS_film(nn.Module):
+class MobRecon_DS(nn.Module):
     def __init__(self, cfg):
         """Init a MobRecon-DenseStack model
 
         Args:
             cfg : config file
         """
-        super(MobRecon_DS_film, self).__init__()
+        super(MobRecon_DS, self).__init__()
         # added by mub
         self.text_embedding = TextEmbeddingEncoder()
         C = 256
-        txt_dim = 256
-        self.txt_proj = nn.Linear(txt_dim, C)
-        self.fusion = FiLM(txt_dim, C)
+        self.txt_dim = 256
+        self.fusion_mlp = nn.Sequential(
+            nn.Linear(C + self.txt_dim, 512),  # hidden size = 512 (you can tune)
+            nn.ReLU(inplace=True),
+            nn.Linear(512, C)
+        )
 
         self.cfg = cfg
         self.backbone = DenseStack_Backnone(latent_size=cfg.MODEL.LATENT_SIZE,
@@ -107,7 +100,15 @@ class MobRecon_DS_film(nn.Module):
             pred2d_pt_list = []
             for i in range(2):
                 latent, pred2d_pt = self.backbone(x[:, 3*i:3*i+3])
-                latent = self.fusion(latent, self.txt_proj(text_token))
+                B, C, H, W = latent.shape
+                latent_flat = latent.permute(0, 2, 3, 1).reshape(-1, C)
+                text_expanded = text_token.unsqueeze(-1).unsqueeze(-1)
+                text_expanded = text_expanded.expand(-1, -1, H, W)
+                text_flat     = text_expanded.permute(0, 2, 3, 1).reshape(-1, self.txt_dim)
+                fusion_input = torch.cat([latent_flat, text_flat], dim=1)
+                fused_flat = self.fusion_mlp(fusion_input)
+                latent = fused_flat.view(B, H, W, C).permute(0, 3, 1, 2)
+
                 pred3d = self.decoder3d(pred2d_pt, latent)
                 pred3d_list.append(pred3d)
                 pred2d_pt_list.append(pred2d_pt)
